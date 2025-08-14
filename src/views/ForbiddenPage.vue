@@ -1,0 +1,15 @@
+<script setup>
+</script>
+
+<template>
+	<div class="d-flex justify-content-center align-items-center min-vh-100">
+		<div class="text-center">
+			<h1 class="display-4">403 - Доступ запрещен</h1>
+			<p>Извините, у вас нет прав для доступа к этой странице.</p>
+			<a href="/login" class="btn btn-primary">Войти</a>
+		</div>
+	</div>
+</template>
+
+<style scoped>
+</style> 
