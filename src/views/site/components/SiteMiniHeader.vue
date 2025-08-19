@@ -23,6 +23,9 @@ function isActive(path) {
 			<li class="nav-item">
 				<router-link to="/site/discounts" class="nav-link" :class="{ active: isActive('/site/discounts') }" aria-current="page">Скидки</router-link>
 			</li>
+			<li class="nav-item">
+				<router-link to="/site/outlets" class="nav-link" :class="{ active: isActive('/site/outlets') }" aria-current="page">Outlet</router-link>
+			</li>
 		</ul>
 	</div>
 </template>

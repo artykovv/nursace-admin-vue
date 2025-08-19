@@ -18,6 +18,7 @@ import BannerEditPage from '../views/site/BannerEditPage.vue'
 import DocumentsPage from '../views/site/DocumentsPage.vue'
 import CategoriesPage from '../views/site/CategoriesPage.vue'
 import DiscountsPage from '../views/site/DiscountsPage.vue'
+import OutletsPage from '../views/site/OutletsPage.vue'
 import DocumentAddPage from '../views/site/DocumentAddPage.vue'
 import DocumentUpdatePage from '../views/site/DocumentUpdatePage.vue'
 import CategoryAddPage from '../views/site/CategoryAddPage.vue'
@@ -53,6 +54,7 @@ const routes = [
 			{ path: 'categories/add', name: 'site-categories-add', component: CategoryAddPage, meta: { requiresAuth: true } },
 			{ path: 'categories/:id/products', name: 'site-categories-products', component: CategoryProductsPage, meta: { requiresAuth: true } },
 			{ path: 'discounts', name: 'site-discounts', component: DiscountsPage, meta: { requiresAuth: true } },
+			{ path: 'outlets', name: 'site-outlets', component: OutletsPage, meta: { requiresAuth: true } },
 		]
 	}
 ]
