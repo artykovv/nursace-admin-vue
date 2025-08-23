@@ -5,7 +5,7 @@ import { getCookie } from '../../utils/http'
 
 const route = useRoute()
 const router = useRouter()
-const productId = Number(route.params.id)
+const productId = ref(Number(route.params.id))
 
 const loading = ref(true)
 const error = ref('')
@@ -108,11 +108,15 @@ async function switchToVariant(size, colorId) {
 	try {
 		const siteUrl = window.AppConfig?.siteUrl || ''
 		// Find the variant with specified size and color
-		const variant = similarProducts.value.find(p => 
+		let variant = similarProducts.value.find(p => 
 			p.product_size === size && p.color?.color_id === colorId
 		)
+		// Fallback: find by size only if exact color match not found
+		if (!variant) {
+			variant = similarProducts.value.find(p => p.product_size === size)
+		}
 		
-		if (variant && variant.good_id !== productId) {
+		if (variant && variant.good_id !== productId.value) {
 			// Navigate to the variant
 			await router.push(`/products/${variant.good_id}`)
 		}
@@ -121,14 +125,14 @@ async function switchToVariant(size, colorId) {
 	}
 }
 
-async function loadSimilarProducts() {
+async function loadSimilarProducts(id = productId.value) {
 	try {
 		const siteUrl = window.AppConfig?.siteUrl || ''
-		const similar = await fetchJSON(`${siteUrl}/products/${productId}/similar`)
+		const similar = await fetchJSON(`${siteUrl}/products/${id}/similar`)
 		similarProducts.value = similar || []
 		
 		// Find current product index in similar products
-		const currentIndex = similarProducts.value.findIndex(p => p.good_id === productId)
+		const currentIndex = similarProducts.value.findIndex(p => p.good_id === id)
 		currentProductIndex.value = currentIndex >= 0 ? currentIndex : 0
 	} catch (e) {
 		similarProducts.value = []
@@ -277,7 +281,7 @@ async function modalSaveSelectedColor() {
 	const payload = modalSelectedColorId.value ? { color_id: modalSelectedColorId.value } : { color_id: null }
 	try {
 		const siteUrl = window.AppConfig?.siteUrl || ''
-		const res = await fetch(`${siteUrl}/products/${productId}`, {
+		const res = await fetch(`${siteUrl}/products/${productId.value}`, {
 			method: 'PUT',
 			headers,
 			body: JSON.stringify(payload)
@@ -374,7 +378,7 @@ async function findCurrentDiscountIdForProduct() {
 	for (const d of discountsCache.value) {
 		try {
 			const prods = await fetchJSON(`${siteUrl}/discounts/${d.id}/products`)
-			if (Array.isArray(prods) && prods.some(p => String(p.good_id) === String(productId))) {
+			if (Array.isArray(prods) && prods.some(p => String(p.good_id) === String(productId.value))) {
 				currentProductDiscountId.value = d.id
 				break
 			}
@@ -411,7 +415,7 @@ async function modalSaveSelectedDiscount() {
 			await fetch(`${siteUrl}/discounts/${currentProductDiscountId.value}/products`, {
 				method: 'DELETE',
 				headers: { 'Content-Type': 'application/json', 'accept': 'application/json' },
-				body: JSON.stringify({ product_ids: [parseInt(productId, 10)] })
+				body: JSON.stringify({ product_ids: [parseInt(productId.value, 10)] })
 			})
 		}
 		// Add to selected if set
@@ -419,7 +423,7 @@ async function modalSaveSelectedDiscount() {
 			const res = await fetch(`${siteUrl}/discounts/${modalSelectedDiscountId.value}/products`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', 'accept': 'application/json' },
-				body: JSON.stringify({ product_ids: [parseInt(productId, 10)] })
+				body: JSON.stringify({ product_ids: [parseInt(productId.value, 10)] })
 			})
 			if (!res.ok) {
 				const t = await res.text()
@@ -430,7 +434,7 @@ async function modalSaveSelectedDiscount() {
 			currentProductDiscountId.value = null
 		}
 		// Refresh product details to update prices/flags
-		await loadProductDetails(productId)
+		await loadProductDetails(productId.value)
 		window.bootstrap.Modal.getInstance(document.getElementById('selectDiscountModal')).hide()
 	} catch (e) {
 		alert('Ошибка: ' + (e?.message || 'Не удалось сохранить скидку'))
@@ -459,7 +463,7 @@ async function loadDiscounts() {
 
 // Watch for route changes to reload similar products
 watch(() => route.params.id, async (newId) => {
-	if (newId && Number(newId) !== productId) {
+	if (newId && Number(newId) !== productId.value) {
 		// Reset state for new product
 		loading.value = true
 		error.value = ''
@@ -475,16 +479,17 @@ watch(() => route.params.id, async (newId) => {
 		currentProductIndex.value = 0
 		
 		// Load new product data
-		await loadProductDetails(Number(newId))
-		await loadSimilarProducts()
+		productId.value = Number(newId)
+		await loadProductDetails(productId.value)
+		await loadSimilarProducts(productId.value)
 	}
 })
 
 onMounted(async () => {
-	await loadProductDetails(productId)
+	await loadProductDetails(productId.value)
 	await loadColors()
 	await loadDiscounts()
-	await loadSimilarProducts()
+	await loadSimilarProducts(productId.value)
 })
 </script>
 
@@ -522,21 +527,23 @@ onMounted(async () => {
 			<div class="offset-xl-1 pt-4 col-xl-5 col-md-6">
 				<div class="Product-Info">
 					<table>
-						<tr><th>Название</th><td id="productName">{{ product?.good_name || '—' }}</td></tr>
-						<tr><th>Артикул</th><td id="productArticul">{{ product?.articul || '—' }}</td></tr>
-						<tr><th>Цена</th><td><span id="newPrice">{{ product?.retail_price }} сом</span></td></tr>
-						<tr><th>Цена со скидкой</th><td><span id="oldPrice" class="old_price" :class="{ visible: productHasDiscount }">{{ product?.retail_price_with_discount }} сом</span></td></tr>
-						<tr><th>Скидка</th><td><span id="discountBadge" class="product_discount_badge" :class="{ visible: productHasDiscount }">-{{ Math.round(((product?.retail_price - product?.retail_price_with_discount) / product?.retail_price) * 100) }}%</span></td></tr>
-						<tr><th>Категория</th><td id="product-category">{{ category?.category_name || '—' }}</td></tr>
-						<tr><th>Бренд</th><td id="product-brand">{{ manufacturer?.manufacturer_name || '—' }}</td></tr>
-						<tr><th>Коллекция</th><td id="product-collection">{{ collection?.collection_name || '—' }}</td></tr>
-						<tr><th>Сезон</th><td id="product-season">{{ season?.season_name || '—' }}</td></tr>
-						<tr><th>Пол</th><td id="product-sex">{{ sex?.sex_name || '—' }}</td></tr>
-						<tr><th>Цвет</th><td><span id="product-color-swatch" class="swatch" :style="{ background: getValidHexOrDefault(color?.color_hex || '') }"></span><span id="product-color">{{ color?.color_name || '—' }}</span></td></tr>
-						<tr><th>Материал</th><td id="product-material">{{ material?.material_name || '—' }}</td></tr>
-						<tr><th>Размер</th><td id="product-size">{{ product?.product_size || '—' }}</td></tr>
-						<tr><th>Описание</th><td id="product-description">{{ product?.description || '—' }}</td></tr>
-						<tr><th>Наличие</th><td id="product-quantity">{{ product?.warehouse_quantity != null ? product?.warehouse_quantity + ' шт' : '—' }}</td></tr>
+						<tbody>
+							<tr><th>Название</th><td id="productName">{{ product?.good_name || '—' }}</td></tr>
+							<tr><th>Артикул</th><td id="productArticul">{{ product?.articul || '—' }}</td></tr>
+							<tr><th>Цена</th><td><span id="newPrice">{{ product?.retail_price }} сом</span></td></tr>
+							<tr><th>Цена со скидкой</th><td><span id="oldPrice" class="old_price" :class="{ visible: productHasDiscount }">{{ product?.retail_price_with_discount }} сом</span></td></tr>
+							<tr><th>Скидка</th><td><span id="discountBadge" class="product_discount_badge" :class="{ visible: productHasDiscount }">-{{ Math.round(((product?.retail_price - product?.retail_price_with_discount) / product?.retail_price) * 100) }}%</span></td></tr>
+							<tr><th>Категория</th><td id="product-category">{{ category?.category_name || '—' }}</td></tr>
+							<tr><th>Бренд</th><td id="product-brand">{{ manufacturer?.manufacturer_name || '—' }}</td></tr>
+							<tr><th>Коллекция</th><td id="product-collection">{{ collection?.collection_name || '—' }}</td></tr>
+							<tr><th>Сезон</th><td id="product-season">{{ season?.season_name || '—' }}</td></tr>
+							<tr><th>Пол</th><td id="product-sex">{{ sex?.sex_name || '—' }}</td></tr>
+							<tr><th>Цвет</th><td><span id="product-color-swatch" class="swatch" :style="{ background: getValidHexOrDefault(color?.color_hex || '') }"></span><span id="product-color">{{ color?.color_name || '—' }}</span></td></tr>
+							<tr><th>Материал</th><td id="product-material">{{ material?.material_name || '—' }}</td></tr>
+							<tr><th>Размер</th><td id="product-size">{{ product?.product_size || '—' }}</td></tr>
+							<tr><th>Описание</th><td id="product-description">{{ product?.description || '—' }}</td></tr>
+							<tr><th>Наличие</th><td id="product-quantity">{{ product?.warehouse_quantity != null ? product?.warehouse_quantity + ' шт' : '—' }}</td></tr>
+						</tbody>
 					</table>
 					<div class="mt-3 d-flex gap-2 justify-content-end">
 						<button id="openSelectColorModalBtn" type="button" class="btn btn-outline-primary" @click="openSelectColorModal">Изменить цвет…</button>
