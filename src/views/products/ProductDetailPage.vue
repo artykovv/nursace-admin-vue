@@ -24,6 +24,7 @@ const colorsCache = ref([])
 const discountsCache = ref([])
 const currentProductColorId = ref(null)
 const currentProductDiscountId = ref(null)
+const productDisplay = ref(1)
 const modalSelectedColorId = ref(null)
 const modalSelectedDiscountId = ref(null)
 const modalColorSearch = ref('')
@@ -37,6 +38,11 @@ const currentProductIndex = ref(0)
 const carouselImages = computed(() => {
 	const imgs = product.value?.images || []
 	return imgs.length > 0 ? imgs : [{ image_url: PLACEHOLDER_IMAGE }]
+})
+
+const displayEnabled = computed({
+	get: () => Number(productDisplay.value) === 1,
+	set: (val) => { productDisplay.value = val ? 1 : 0 }
 })
 
 const placeholderImage = computed(() => PLACEHOLDER_IMAGE)
@@ -102,6 +108,7 @@ function renderProductDetails(product) {
 	const hasDiscount = product.retail_price !== product.retail_price_with_discount
 	productHasDiscount.value = !!hasDiscount
 	currentProductColorId.value = product.color_id || null
+	productDisplay.value = Number(product.display ?? 1)
 }
 
 async function switchToVariant(size, colorId) {
@@ -128,7 +135,7 @@ async function switchToVariant(size, colorId) {
 async function loadSimilarProducts(id = productId.value) {
 	try {
 		const siteUrl = window.AppConfig?.siteUrl || ''
-		const similar = await fetchJSON(`${siteUrl}/products/${id}/similar`)
+		const similar = await fetchJSON(`${siteUrl}/products/${id}/similar?admin=true`)
 		similarProducts.value = similar || []
 		
 		// Find current product index in similar products
@@ -297,6 +304,36 @@ async function modalSaveSelectedColor() {
 		window.bootstrap.Modal.getInstance(document.getElementById('selectColorModal')).hide()
 	} catch (e) {
 		alert('Ошибка: ' + (e?.message || 'Не удалось сохранить цвет'))
+	}
+}
+
+async function saveProductDisplay() {
+	const token = getCookie('Bearer')
+	const headers = { 'Content-Type': 'application/json', 'accept': 'application/json' }
+	if (token) headers['Authorization'] = `Bearer ${token}`
+	const payload = { display: productDisplay.value }
+	const siteUrl = window.AppConfig?.siteUrl || ''
+	const res = await fetch(`${siteUrl}/products/${productId.value}`, {
+		method: 'PUT',
+		headers,
+		body: JSON.stringify(payload)
+	})
+	if (!res.ok) {
+		const t = await res.text()
+		throw new Error(t || 'Не удалось обновить видимость товара')
+	}
+	if (product.value) {
+		product.value.display = productDisplay.value
+	}
+}
+
+async function onToggleDisplay() {
+	const oldValue = Number(product.value?.display ?? 1)
+	try {
+		await saveProductDisplay()
+	} catch (e) {
+		productDisplay.value = oldValue
+		alert('Ошибка: ' + (e?.message || 'Не удалось изменить видимость товара'))
 	}
 }
 
@@ -545,6 +582,11 @@ onMounted(async () => {
 							<tr><th>Наличие</th><td id="product-quantity">{{ product?.warehouse_quantity != null ? product?.warehouse_quantity + ' шт' : '—' }}</td></tr>
 						</tbody>
 					</table>
+					<!-- Display toggle -->
+					<div class="form-check form-switch mt-3">
+						<input class="form-check-input" type="checkbox" role="switch" id="productDisplaySwitch" :checked="displayEnabled" @change="(e) => { displayEnabled = e.target.checked; onToggleDisplay() }">
+						<label class="form-check-label" for="productDisplaySwitch">Показывать на сайте</label>
+					</div>
 					<div class="mt-3 d-flex gap-2 justify-content-end">
 						<button id="openSelectColorModalBtn" type="button" class="btn btn-outline-primary" @click="openSelectColorModal">Изменить цвет…</button>
 						<button id="openSelectDiscountModalBtn" type="button" class="btn btn-outline-primary" @click="openSelectDiscountModal">Изменить скидку…</button>
