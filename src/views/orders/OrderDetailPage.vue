@@ -10,10 +10,26 @@ const loading = ref(true)
 const error = ref('')
 const order = ref(null)
 const statuses = ref([])
+const products = ref({}) // Store product details by product_id
 
 function authHeaders() {
 	const token = getCookie('Bearer')
 	return token ? { 'Authorization': 'Bearer ' + token } : {}
+}
+
+async function loadProductDetails(productId) {
+	try {
+		const siteUrl = window.AppConfig?.siteUrl || ''
+		const productRes = await fetch(`${siteUrl}/products/${productId}`, { 
+			headers: { 'accept': 'application/json', ...authHeaders() } 
+		})
+		if (productRes.ok) {
+			const productData = await productRes.json()
+			products.value[productId] = productData
+		}
+	} catch (e) {
+		console.error(`Failed to load product ${productId}:`, e)
+	}
 }
 
 async function loadData() {
@@ -22,6 +38,14 @@ async function loadData() {
 		const orderRes = await fetch(`${siteUrl}/orders/${orderId}`, { headers: { 'accept': 'application/json', ...authHeaders() } })
 		if (!orderRes.ok) throw new Error('Failed')
 		order.value = await orderRes.json()
+		
+		// Load product details for each item
+		if (order.value?.items) {
+			for (const item of order.value.items) {
+				await loadProductDetails(item.product_id)
+			}
+		}
+		
 		const statusesRes = await fetch(`${siteUrl}/orders/statuses/`, { headers: { 'accept': 'application/json', ...authHeaders() } })
 		statuses.value = await statusesRes.json()
 	} catch (e) {
@@ -34,6 +58,10 @@ async function loadData() {
 function statusText(id) {
 	const s = (statuses.value || []).find(x => x.id === id)
 	return s?.description || s?.name || id
+}
+
+function getProductInfo(productId) {
+	return products.value[productId] || null
 }
 
 onMounted(loadData)
@@ -69,12 +97,32 @@ onMounted(loadData)
 			<div class="table-responsive">
 				<table class="table table-bordered">
 					<thead>
-						<tr><th>ID</th><th>Товар</th><th>Кол-во</th><th>Цена</th></tr>
+						<tr>
+							<th>ID</th>
+							<th>Товар</th>
+							<th>Артикул</th>
+							<th>Размер</th>
+							<th>Кол-во</th>
+							<th>Цена</th>
+						</tr>
 					</thead>
 					<tbody>
 						<tr v-for="(item, idx) in order.items || []" :key="idx">
 							<td>{{ item.product_id }}</td>
-							<td>{{ item.product?.good_name || '-' }}</td>
+							<td>
+								<div v-if="getProductInfo(item.product_id)">
+									<strong>{{ getProductInfo(item.product_id).good_name }}</strong>
+								</div>
+								<div v-else class="text-muted">Загрузка...</div>
+							</td>
+							<td>
+								<span v-if="getProductInfo(item.product_id)">{{ getProductInfo(item.product_id).articul }}</span>
+								<span v-else class="text-muted">-</span>
+							</td>
+							<td>
+								<span v-if="getProductInfo(item.product_id)">{{ getProductInfo(item.product_id).product_size }}</span>
+								<span v-else class="text-muted">-</span>
+							</td>
 							<td>{{ item.quantity }}</td>
 							<td>{{ item.price }}</td>
 						</tr>
