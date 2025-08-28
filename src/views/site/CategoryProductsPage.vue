@@ -53,43 +53,78 @@ function getToken() {
 	return m ? decodeURIComponent(m[1]) : ''
 }
 
-// Add products modal
+// Add products modal (modern table-based)
 const showAdd = ref(false)
-const allProducts = ref([])
-const search = ref('')
-const loadingAll = ref(false)
+const productsSearch = ref('')
+const modalProducts = ref([])
+const modalLoading = ref(false)
+const modalOffset = ref(0)
+const modalLimit = ref(20)
+const modalHasImage = ref('') // '', 'true', 'false'
+const modalSortField = ref('id') // id | name | price
+const modalSortDir = ref('desc')
+const modalCanLoadMore = ref(true)
 
-const filteredAllProducts = computed(() => {
-	const s = search.value.trim().toLowerCase()
-	const ids = new Set(items.value.map(p => p.good_id))
-	return allProducts.value.filter(p => {
-		const name = (p.fashion_name || p.good_name || '').toLowerCase()
-		const articul = (p.articul || '').toLowerCase()
-		return !ids.has(p.good_id) && (!s || name.includes(s) || articul.includes(s))
+const categoryProductIds = computed(() => new Set(items.value.map(p => p.good_id)))
+
+const filteredSortedModalProducts = computed(() => {
+	let data = [...modalProducts.value]
+	data.sort((a, b) => {
+		let av, bv
+		if (modalSortField.value === 'id') { av = a.good_id; bv = b.good_id }
+		else if (modalSortField.value === 'name') { av = (a.good_name || a.fashion_name || '').toLowerCase(); bv = (b.good_name || b.fashion_name || '').toLowerCase() }
+		else if (modalSortField.value === 'price') { av = Number(a.retail_price_with_discount ?? a.retail_price); bv = Number(b.retail_price_with_discount ?? b.retail_price) }
+		else { av = a[modalSortField.value]; bv = b[modalSortField.value] }
+		if (av < bv) return modalSortDir.value === 'asc' ? -1 : 1
+		if (av > bv) return modalSortDir.value === 'asc' ? 1 : -1
+		return 0
 	})
+	return data
 })
 
-async function openAdd() {
-	showAdd.value = true
-	await fetchAllProducts()
+function resetAndLoadModalProducts() {
+	modalOffset.value = 0
+	modalProducts.value = []
+	modalCanLoadMore.value = true
+	loadMoreModalProducts()
 }
 
-async function fetchAllProducts() {
+async function loadMoreModalProducts() {
+	if (!modalCanLoadMore.value || modalLoading.value) return
+	modalLoading.value = true
 	try {
-		loadingAll.value = true
-		const url = search.value.trim() ? `/products/?search=${encodeURIComponent(search.value.trim())}` : '/products/'
-		const res = await fetch(`${siteUrl}${url}`, { headers: { accept: 'application/json' } })
-		if (!res.ok) throw new Error()
-		const data = await res.json()
-		allProducts.value = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []
+		const params = new URLSearchParams({ limit: String(modalLimit.value), offset: String(modalOffset.value) })
+		if (productsSearch.value.trim()) params.set('search', productsSearch.value.trim())
+		if (modalHasImage.value) params.set('has_image', modalHasImage.value)
+		const data = await fetch(`${siteUrl}/products/${params.toString() ? `?${params.toString()}` : ''}`, { 
+			headers: { accept: 'application/json' } 
+		}).then(res => res.json())
+		const batch = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []
+		if (batch.length < modalLimit.value) modalCanLoadMore.value = false
+		modalProducts.value = modalProducts.value.concat(batch)
+		modalOffset.value += modalLimit.value
 	} catch (e) {
-		allProducts.value = []
+		modalCanLoadMore.value = false
 	} finally {
-		loadingAll.value = false
+		modalLoading.value = false
 	}
 }
 
+function applyModalHasImageFilter(val) {
+	modalHasImage.value = val === null ? '' : (val ? 'true' : 'false')
+	resetAndLoadModalProducts()
+}
+
+async function openAdd() {
+	showAdd.value = true
+	resetAndLoadModalProducts()
+}
+
 async function addToCategory(productId) {
+	if (categoryProductIds.value.has(productId)) {
+		alert('Товар уже в этой категории')
+		return
+	}
 	try {
 		const res = await fetch(`${siteUrl}/custom-categories/${categoryId}/products/${productId}`, {
 			method: 'POST',
@@ -167,42 +202,94 @@ onMounted(load)
 					</div>
 					<div class="modal-body">
 						<div class="input-group mb-3">
-							<input v-model="search" type="text" class="form-control" placeholder="Поиск по названию или артикулу..." @keydown.enter.prevent="fetchAllProducts" />
-							<button class="btn btn-outline-primary" type="button" @click="fetchAllProducts">Поиск</button>
+							<span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+							<input v-model="productsSearch" @keydown.enter.prevent="resetAndLoadModalProducts" type="text" class="form-control" placeholder="Поиск (название, артикул)" />
+							<button class="btn btn-outline-primary" @click="resetAndLoadModalProducts">Найти</button>
 						</div>
-						<div v-if="loadingAll" class="text-muted">Загрузка…</div>
-						<div v-else id="all-products-list">
-							<div v-if="filteredAllProducts.length === 0" class="alert alert-info">Нет товаров</div>
-							<div v-else>
-								<div v-for="p in filteredAllProducts" :key="p.good_id" class="card mb-2 product-row px-3">
-									<div class="card-body row align-items-start g-0 mb-0">
-										<div class="col-12 col-md-2 d-flex align-items-center justify-content-center mb-2 mb-md-0">
-											<div class="ratio ratio-1x1 w-100" style="max-width:90px;">
-												<template v-if="mainImage(p)">
-													<img :src="mainImage(p).image_url" class="object-fit-cover rounded" style="max-width:80px;max-height:80px;" />
-												</template>
-												<template v-else>
-													<div class="d-flex align-items-center justify-content-center h-100 text-muted">Нет фото</div>
-												</template>
-											</div>
-										</div>
-										<div class="col-12 col-md-4 mb-2 mb-md-0">
-											<div class="fw-bold">{{ p.fashion_name || '' }}</div>
-											<div class="text-muted small">Артикул: <b>{{ p.articul || '' }}</b></div>
-										</div>
-										<div class="col-12 col-md-2 text-end">
-											<span class="fw-bold">
-												<template v-if="p.retail_price_with_discount && p.retail_price_with_discount != p.retail_price">
-													<span class="text-danger">{{ p.retail_price_with_discount }}</span>
-													<span class="text-decoration-line-through text-muted small ms-1">{{ p.retail_price }}</span>
-												</template>
-												<template v-else>{{ p.retail_price }}</template>
-											</span>
-											<button class="btn btn-success btn-sm ms-2" @click="addToCategory(p.good_id)">+</button>
-										</div>
+						<div class="card">
+							<div class="card-header d-flex flex-wrap gap-2 align-items-center justify-content-between">
+								<div class="d-flex gap-2 align-items-center">
+									<select class="form-select form-select-sm w-auto" v-model="modalLimit" @change="resetAndLoadModalProducts">
+										<option :value="20">20</option>
+										<option :value="50">50</option>
+										<option :value="100">100</option>
+									</select>
+									<select class="form-select form-select-sm w-auto" v-model="modalHasImage" @change="resetAndLoadModalProducts">
+										<option value="">Все</option>
+										<option value="true">С фото</option>
+										<option value="false">Без фото</option>
+									</select>
+								</div>
+								<div class="d-flex gap-2 align-items-center">
+									<label class="mb-0 small text-muted">Сортировать</label>
+									<select class="form-select form-select-sm w-auto" v-model="modalSortField">
+										<option value="id">ID</option>
+										<option value="name">Название</option>
+										<option value="price">Цена</option>
+									</select>
+									<div class="btn-group btn-group-sm" role="group">
+										<button type="button" class="btn" :class="modalSortDir==='asc' ? 'btn-primary' : 'btn-outline-primary'" @click="modalSortDir='asc'">Возр.</button>
+										<button type="button" class="btn" :class="modalSortDir==='desc' ? 'btn-primary' : 'btn-outline-primary'" @click="modalSortDir='desc'">Убыв.</button>
 									</div>
 								</div>
 							</div>
+							<div class="card-body p-0">
+								<div class="table-responsive">
+									<table class="table align-middle mb-0">
+										<thead>
+											<tr>
+												<th>Фото</th>
+												<th>Название</th>
+												<th>Размер</th>
+												<th>В наличии</th>
+												<th class="text-end">Цена</th>
+												<th>Добавить</th>
+											</tr>
+										</thead>
+										<tbody>
+											<tr v-if="modalProducts.length === 0 && modalLoading">
+												<td colspan="6" class="text-center text-muted py-4">Загрузка...</td>
+											</tr>
+											<tr v-else-if="modalProducts.length === 0 && !modalLoading">
+												<td colspan="6" class="text-center text-muted py-4">Нет товаров</td>
+											</tr>
+											<tr v-else v-for="p in filteredSortedModalProducts" :key="p.good_id">
+												<td class="align-middle text-center" style="max-width:90px;">
+													<div class="ratio ratio-1x1 w-100" style="max-width:90px;" @click.stop="applyModalHasImageFilter(!!mainImage(p))">
+														<template v-if="mainImage(p)">
+															<img :src="mainImage(p).image_url" class="object-fit-cover rounded" :alt="p.good_name || p.fashion_name || ''" style="max-width:80px;max-height:80px;" />
+														</template>
+														<template v-else>
+															<div class="d-flex align-items-center justify-content-center h-100 text-muted">Нет фото</div>
+														</template>
+													</div>
+												</td>
+												<td class="align-middle">
+													<div class="fw-bold">{{ p.good_name || p.fashion_name || '' }}</div>
+													<div class="text-muted small">Артикул: <b>{{ p.articul || '' }}</b></div>
+												</td>
+												<td class="align-middle">{{ p.product_size || '' }}</td>
+												<td class="align-middle">{{ p.warehouse_quantity ?? 0 }}</td>
+												<td class="align-middle text-end">
+													<span class="fw-bold">
+														<template v-if="p.retail_price_with_discount && p.retail_price_with_discount != p.retail_price">
+															<span class="text-danger">{{ p.retail_price_with_discount }}</span>
+															<span class="text-decoration-line-through text-muted small ms-1">{{ p.retail_price }}</span>
+														</template>
+														<template v-else>{{ p.retail_price }}</template>
+													</span>
+												</td>
+												<td class="align-middle">
+													<button class="btn btn-success btn-sm" :disabled="categoryProductIds.has(p.good_id)" :title="categoryProductIds.has(p.good_id) ? 'Товар уже в этой категории' : ''" @click="addToCategory(p.good_id)">+</button>
+												</td>
+											</tr>
+										</tbody>
+									</table>
+								</div>
+							</div>
+						</div>
+						<div class="d-flex justify-content-center align-items-center mt-3" v-if="modalCanLoadMore">
+							<button class="btn btn-outline-primary" @click="loadMoreModalProducts" :disabled="modalLoading">{{ modalLoading ? 'Загрузка…' : 'Загрузить еще' }}</button>
 						</div>
 					</div>
 				</div>
@@ -212,8 +299,21 @@ onMounted(load)
 </template>
 
 <style scoped>
-.modal.show { display: block !important; position: fixed; inset: 0; z-index: 1050; }
-.modal-backdrop.show { position: fixed; inset: 0; background: rgba(0,0,0,0.5); opacity: 1; z-index: 1040; }
+.modal.show {
+	display: block !important;
+	position: fixed;
+	top: 0; left: 0; right: 0; bottom: 0;
+	z-index: 1050;
+}
+
+.modal-backdrop.show {
+	position: fixed;
+	top: 0; left: 0; right: 0; bottom: 0;
+	background: rgba(0,0,0,0.5);
+	opacity: 1;
+	z-index: 1040;
+}
+
 .modal-dialog { position: relative; z-index: 1055; }
 .modal-content { position: relative; z-index: 1056; }
 </style>

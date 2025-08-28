@@ -21,7 +21,6 @@ import DiscountsPage from '../views/site/DiscountsPage.vue'
 import OutletsPage from '../views/site/OutletsPage.vue'
 import DocumentAddPage from '../views/site/DocumentAddPage.vue'
 import DocumentUpdatePage from '../views/site/DocumentUpdatePage.vue'
-import CategoryAddPage from '../views/site/CategoryAddPage.vue'
 import CategoryProductsPage from '../views/site/CategoryProductsPage.vue'
 import { validateAdmin } from '../utils/auth'
 
@@ -51,7 +50,6 @@ const routes = [
 			{ path: 'documents/add', name: 'site-documents-add', component: DocumentAddPage, meta: { requiresAuth: true } },
 			{ path: 'documents/update/:id', name: 'site-documents-update', component: DocumentUpdatePage, meta: { requiresAuth: true } },
 			{ path: 'categories', name: 'site-categories', component: CategoriesPage, meta: { requiresAuth: true } },
-			{ path: 'categories/add', name: 'site-categories-add', component: CategoryAddPage, meta: { requiresAuth: true } },
 			{ path: 'categories/:id/products', name: 'site-categories-products', component: CategoryProductsPage, meta: { requiresAuth: true } },
 			{ path: 'discounts', name: 'site-discounts', component: DiscountsPage, meta: { requiresAuth: true } },
 			{ path: 'outlets', name: 'site-outlets', component: OutletsPage, meta: { requiresAuth: true } },

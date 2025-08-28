@@ -40,8 +40,10 @@ async function fetchImages() {
 		if (!res.ok) throw new Error('Ошибка загрузки товара')
 		const product = await res.json()
 		
-		// Clear and reload images
-		images.value = (product.images || []).map(img => ({
+		// Clear and reload images (sorted by order)
+		images.value = (product.images || [])
+			.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+			.map(img => ({
 			image_id: img.image_id,
 			image_url: img.image_url,
 			is_main: !!img.is_main,
@@ -78,14 +80,21 @@ const placeholderImage = computed(() => PLACEHOLDER_IMAGE)
 
 function setMain(idx) {
 	const all = [...allImages.value]
+	if (idx == null || idx < 0 || idx >= all.length) return
+	
+	// Take selected image out
+	const [selected] = all.splice(idx, 1)
+	
+	// Reset main flags
 	all.forEach(i => i.is_main = false)
-	if (all[idx]) {
-		all[idx].is_main = true
-	}
+	selected.is_main = true
+	
+	// Place selected at the beginning
+	const reordered = [selected, ...all]
 	
 	// Update both arrays
-	images.value = all.filter(i => !i.is_new)
-	newImages.value = all.filter(i => i.is_new)
+	images.value = reordered.filter(i => !i.is_new)
+	newImages.value = reordered.filter(i => i.is_new)
 }
 
 function removeImage(idx) {
@@ -127,6 +136,19 @@ function onFileSelect(e) {
 async function deleteImage(imageId) {
 	if (!imageId) {
 		alert('Ошибка: не указан ID изображения')
+		return
+	}
+	
+	// If it's a newly added (unsaved) image, remove locally without API call
+	const local = allImages.value.find(img => img.image_id === imageId)
+	if (local && local.is_new) {
+		newImages.value = newImages.value.filter(img => img.image_id !== imageId)
+		// Ensure there is a main image
+		if (allImages.value.length > 0 && !allImages.value.some(img => img.is_main)) {
+			if (allImages.value.length > 0) {
+				allImages.value[0].is_main = true
+			}
+		}
 		return
 	}
 	
@@ -273,23 +295,7 @@ async function onSave() {
 			}
 		}
 		
-		// Check if there are actual changes compared to original images
-		const originalImages = images.value.filter(i => !i.is_new)
-		const hasChanges = 
-			originalImages.length !== uniqueImages.length ||
-			originalImages.some((orig, idx) => {
-				const newImg = uniqueImages[idx]
-				return !newImg || 
-					   orig.image_url !== newImg.image_url || 
-					   orig.is_main !== newImg.is_main
-			}) ||
-			newImages.value.length > 0
-		
-		if (!hasChanges) {
-			router.push(`/products/${productId}`)
-			return
-		}
-		
+		// Всегда отправляем запрос сохранения
 		const siteUrl = window.AppConfig?.siteUrl || ''
 		const payload = uniqueImages.map((img, idx) => ({
 			image_url: img.image_url,
@@ -326,6 +332,14 @@ async function onSave() {
 onMounted(() => {
 	loadData()
 })
+
+function onFileDrop(e) {
+	e.preventDefault()
+	uploadAreaDragover.value = false
+	const files = Array.from(e.dataTransfer?.files || []).filter(file => file.type.startsWith('image/'))
+	if (files.length === 0) return
+	handleFiles(files)
+}
 </script>
 
 <template>

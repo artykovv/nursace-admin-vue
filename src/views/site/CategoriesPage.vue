@@ -7,6 +7,10 @@ const items = ref([])
 const loading = ref(false)
 const error = ref('')
 
+// Create modal
+const showCreate = ref(false)
+const createForm = ref({ name: '' })
+
 function getToken() {
 	const m = document.cookie.match(/(?:^|; )Bearer=([^;]*)/)
 	return m ? decodeURIComponent(m[1]) : ''
@@ -25,6 +29,28 @@ async function load() {
 		items.value = []
 	} finally {
 		loading.value = false
+	}
+}
+
+async function onCreate() {
+	if (!createForm.value.name.trim()) return
+	try {
+		const siteUrl = window.AppConfig?.siteUrl || ''
+		const res = await fetch(`${siteUrl}/custom-categories/`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${getToken()}`,
+				'Accept': 'application/json'
+			},
+			body: JSON.stringify({ category_name: createForm.value.name })
+		})
+		if (!res.ok) throw new Error()
+		showCreate.value = false
+		createForm.value.name = ''
+		await load()
+	} catch (e) {
+		alert('Ошибка добавления категории')
 	}
 }
 
@@ -50,7 +76,7 @@ onMounted(load)
 	<div class="container mt-4">
 		<h1>Категории</h1>
 		<div class="d-flex justify-content-between align-items-center mb-3">
-			<button class="btn btn-success" @click="router.push('/site/categories/add')">Добавить категорию</button>
+			<button class="btn btn-success" @click="showCreate = true">Добавить категорию</button>
 		</div>
 		<div v-if="loading" class="text-muted">Загрузка…</div>
 		<div v-else-if="error" class="alert alert-danger">{{ error }}</div>
@@ -66,8 +92,50 @@ onMounted(load)
 				</li>
 			</ul>
 		</div>
+
+		<!-- Create Modal -->
+		<div v-if="showCreate" class="modal fade show d-block" tabindex="-1">
+			<div class="modal-backdrop show"></div>
+			<div class="modal-dialog">
+				<div class="modal-content">
+					<div class="modal-header">
+						<h5 class="modal-title">Новая категория</h5>
+						<button type="button" class="btn-close" @click="showCreate = false"></button>
+					</div>
+					<div class="modal-body">
+						<form @submit.prevent="onCreate">
+							<div class="mb-3">
+								<label class="form-label">Название</label>
+								<input v-model="createForm.name" type="text" class="form-control" required />
+							</div>
+						</form>
+					</div>
+					<div class="modal-footer">
+						<button type="button" class="btn btn-secondary" @click="showCreate = false">Закрыть</button>
+						<button type="button" class="btn btn-primary" @click="onCreate">Сохранить</button>
+					</div>
+				</div>
+			</div>
+		</div>
 	</div>
 </template>
 
 <style scoped>
+.modal.show {
+	display: block !important;
+	position: fixed;
+	top: 0; left: 0; right: 0; bottom: 0;
+	z-index: 1050;
+}
+
+.modal-backdrop.show {
+	position: fixed;
+	top: 0; left: 0; right: 0; bottom: 0;
+	background: rgba(0,0,0,0.5);
+	opacity: 1;
+	z-index: 1040;
+}
+
+.modal-dialog { position: relative; z-index: 1055; }
+.modal-content { position: relative; z-index: 1056; }
 </style> 
